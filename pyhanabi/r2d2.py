@@ -66,7 +66,7 @@ class R2D2Net(torch.jit.ScriptModule):
     def act(
         self, priv_s: torch.Tensor, hid: Dict[str, torch.Tensor]
     ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
-        assert priv_s.dim() == 2, "dim should be 2, [batch, dim], get %d" % s.dim()
+        assert priv_s.dim() == 2, "dim should be 2, [batch, dim], get %d" % priv_s.dim()
 
         priv_s = priv_s.unsqueeze(0)
         x = self.net(priv_s)
@@ -173,7 +173,7 @@ class R2D2Agent(torch.jit.ScriptModule):
         hand_size,
         uniform_priority,
         *,
-        num_fc_layer=1,
+        num_ff_layer=1,
         skip_connect=False,
     ):
         super().__init__()
@@ -184,7 +184,7 @@ class R2D2Agent(torch.jit.ScriptModule):
             out_dim,
             num_lstm_layer,
             hand_size,
-            num_fc_layer,
+            num_ff_layer,
             skip_connect,
         ).to(device)
         self.target_net = R2D2Net(
@@ -194,7 +194,7 @@ class R2D2Agent(torch.jit.ScriptModule):
             out_dim,
             num_lstm_layer,
             hand_size,
-            num_fc_layer,
+            num_ff_layer,
             skip_connect,
         ).to(device)
         self.vdn = vdn
@@ -222,7 +222,7 @@ class R2D2Agent(torch.jit.ScriptModule):
             self.online_net.num_lstm_layer,
             self.online_net.hand_size,
             self.uniform_priority,
-            num_fc_layer=self.online_net.num_fc_layer,
+            num_ff_layer=self.online_net.num_ff_layer,
             skip_connect=self.online_net.skip_connect,
         )
         cloned.load_state_dict(self.state_dict())
@@ -274,7 +274,8 @@ class R2D2Agent(torch.jit.ScriptModule):
         rand = torch.rand(greedy_action.size(), device=greedy_action.device)
         assert rand.size() == eps.size()
         rand = (rand < eps).long()
-        action = (greedy_action * (1 - rand) + random_action * rand).detach().long()
+        # action = (greedy_action * (1 - rand) + random_action * rand).detach().long()
+        action = torch.where(rand < eps, random_action, greedy_action).detach()
 
         if self.vdn:
             action = action.view(obsize, ibsize, num_player)

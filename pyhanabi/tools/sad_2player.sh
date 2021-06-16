@@ -29,4 +29,4 @@ python selfplay.py \
        --num_player 2 \
        --rnn_hid_dim 512 \
        --multi_step 3 \
-       --act_device cuda:1,cuda:2 \
+       --act_device cuda:0,cuda:1 \

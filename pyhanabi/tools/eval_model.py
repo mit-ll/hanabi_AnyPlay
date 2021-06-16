@@ -49,16 +49,16 @@ def load_op_model(method, idx1, idx2, device):
     agents = []
     for idx in [idx1, idx2]:
         if idx >= 0 and idx < 3:
-            num_fc = 1
+            num_ff = 1
             skip_connect = False
         elif idx >= 3 and idx < 6:
-            num_fc = 1
+            num_ff = 1
             skip_connect = True
         elif idx >= 6 and idx < 9:
-            num_fc = 2
+            num_ff = 2
             skip_connect = False
         else:
-            num_fc = 2
+            num_ff = 2
             skip_connect = True
         weight_file = os.path.join(folder, f"M{idx}.pthw")
         if not os.path.exists(weight_file):
@@ -81,7 +81,7 @@ def load_op_model(method, idx1, idx2, device):
             2,
             5,
             False,
-            num_fc_layer=num_fc,
+            num_ff_layer=num_ff,
             skip_connect=skip_connect,
         ).to(device)
         utils.load_weight(agent.online_net, weight_file, device)
@@ -119,7 +119,8 @@ def evaluate_agents(agents, num_game, seed, bomb, device, num_run=1, verbose=Tru
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--paper", default="sad", type=str, help="sad/op/obl")
-    parser.add_argument("--num_game", default=5000, type=int)
+    # parser.add_argument("--num_game", default=5000, type=int) #5000 as default was causing LL stuff to crash with "Resource temporarility unavailable"
+    parser.add_argument("--num_game", default=2500, type=int)
     parser.add_argument(
         "--num_run", default=1, type=int, help="total num game = num_game * num_run"
     )

@@ -1,12 +1,23 @@
+#!/bin/bash
+
 # Copyright (c) Facebook, Inc. and its affiliates.
 # All rights reserved.
 #
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 #
-#!/bin/bash
-python selfplay.py \
-       --save_dir exps/op_2p \
+
+#SBATCH --gres=gpu:volta:2
+#SBATCH -p gaia 
+#SBATCH -o slurm_out/output_op_2p_%j.txt
+#SBATCH -e slurm_out/error_op_2p_%j.txt
+#SBATCH --job-name=hanabi_op_2player_%j
+#SBATCH --exclusive
+
+eval "$(conda shell.bash hook)";
+conda activate py38;
+python -u selfplay.py \
+       --save_dir exps/op_2p_$SLURM_JOB_ID \
        --num_thread 80 \
        --num_game_per_thread 80 \
        --method vdn \
