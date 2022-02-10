@@ -16,7 +16,7 @@ import r2d2
 import utils
 
 
-def evaluate(agents, num_game, seed, bomb, eps, sad, *, hand_size=5, runners=None, device="cuda:0"):
+def evaluate(agents, num_game, seed, bomb, eps, sad, *, hand_size=5, intent_size=0, runners=None, device="cuda:0"):
     """
     evaluate agents as long as they have a "act" function
     """
@@ -31,6 +31,7 @@ def evaluate(agents, num_game, seed, bomb, eps, sad, *, hand_size=5, runners=Non
         seed,
         num_player,
         hand_size,
+        intent_size,
         bomb,
         [eps],
         -1,

@@ -15,9 +15,23 @@ rela::TensorDict HanabiEnv::reset() {
   }
   numStep_ = 0;
 
+  // Also want to sample a latent variable from Normal for each player, 
+  // then make it part of observations
+  std::normal_distribution<float> norm_dist(0.0,1.0);
+  int intent_size = game_.IntentSize();
+  
   for (int pid = 0; pid < game_.NumPlayers(); ++pid) {
     playerEps_[pid] = epsList_[game_.rng()->operator()() % epsList_.size()];
+    playerIds_[pid] = pid;
+    playerShufIds_[pid] = pid;
+    std::vector<float> intent(intent_size);
+    for (int i = 0; i < intent_size; ++i) {
+      intent[i] = norm_dist(*game_.rng());
+    } 
+    playerIntents_[pid] = torch::tensor(intent);
   }
+
+  std::shuffle(std::begin(playerShufIds_), std::end(playerShufIds_), *game_.rng());
 
   if (shuffleColor_) {
     // assert(game_.NumPlayers() == 2);
@@ -193,12 +207,16 @@ rela::TensorDict HanabiEnv::computeFeatureAndLegalMove(
     legalMove.push_back(torch::tensor(moveUids));
     // epsAccessor[i] = playerEps_[i];
   }
-
+  
   rela::TensorDict dict = {
       {"priv_s", torch::stack(privS, 0)},
       {"legal_move", torch::stack(legalMove, 0)},
       {"eps", torch::tensor(playerEps_)},
       {"own_hand", torch::stack(ownHand, 0)},
+      // provide player ID and latent variables here as values for keys in dictionary
+      {"player_ids", torch::tensor(playerIds_)},
+      {"player_shuffled_ids", torch::tensor(playerShufIds_)},
+      {"player_intents", torch::stack(playerIntents_)},
   };
 
   return dict;

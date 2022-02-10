@@ -30,6 +30,10 @@ def parse_args():
     parser.add_argument("--shuffle_obs", type=int, default=0)
     parser.add_argument("--shuffle_color", type=int, default=0)
     parser.add_argument("--pred_weight", type=float, default=0)
+    parser.add_argument("--use_pred_reward", action="store_true", default=False)
+    parser.add_argument("--intent_weight", type=float, default=0)
+    parser.add_argument("--intent_pred_input", type=str, default='lstm_o')
+    parser.add_argument("--intent_arch", type=str, default='concat')
     parser.add_argument("--num_eps", type=int, default=80)
 
     parser.add_argument("--load_model", type=str, default="")
@@ -42,6 +46,15 @@ def parse_args():
     parser.add_argument("--sad", type=int, default=0)
     parser.add_argument("--num_player", type=int, default=2)
     parser.add_argument("--hand_size", type=int, default=5)
+    parser.add_argument("--intent_size", type=int, default=0)
+    parser.add_argument("--use_xent_intent", action="store_true", default=False)
+    parser.add_argument("--dont_onehot_xent_intent", action="store_true", default=False)
+    parser.add_argument("--one_way_intent", action="store_true", default=False)
+    parser.add_argument("--train_adapt", action="store_true", default=False)
+    parser.add_argument("--use_player_id", action="store_true", default=False, \
+                        help="whether to provide player ID as observations to agents")
+    parser.add_argument("--shuf_pid", action="store_true", default=False, \
+                        help="shuffles player ID; use_player_id must be True")
 
     # optimization/training settings
     parser.add_argument("--lr", type=float, default=6.25e-5, help="Learning rate")
@@ -49,6 +62,8 @@ def parse_args():
     parser.add_argument("--grad_clip", type=float, default=50, help="max grad norm")
     parser.add_argument("--num_lstm_layer", type=int, default=2)
     parser.add_argument("--rnn_hid_dim", type=int, default=512)
+    parser.add_argument("--num_ff_layer", type=int, default=1)
+    parser.add_argument("--skip_connect", action="store_true", default=False)
 
     parser.add_argument("--train_device", type=str, default="cuda:0")
     parser.add_argument("--batchsize", type=int, default=128)
@@ -83,6 +98,7 @@ def parse_args():
 
     args = parser.parse_args()
     assert args.method in ["vdn", "iql"]
+    assert not args.train_adapt or len(args.load_model) > 0
     return args
 
 
@@ -90,12 +106,16 @@ if __name__ == "__main__":
     torch.backends.cudnn.benchmark = True
     args = parse_args()
 
+    success = False
     if not os.path.exists(args.save_dir):
         os.makedirs(args.save_dir)
 
     logger_path = os.path.join(args.save_dir, "train.log")
     sys.stdout = common_utils.Logger(logger_path)
     saver = common_utils.TopkSaver(args.save_dir, 5)
+       
+    success = True
+    gc.collect()
 
     common_utils.set_all_seeds(args.seed)
     pprint.pprint(vars(args))
@@ -117,6 +137,7 @@ if __name__ == "__main__":
         args.seed,
         args.num_player,
         args.hand_size,
+        args.intent_size,
         args.train_bomb,
         explore_eps,
         args.max_len,
@@ -136,7 +157,20 @@ if __name__ == "__main__":
         games[0].num_action(),
         args.num_lstm_layer,
         args.hand_size,
+        args.intent_size,
         False,  # uniform priority
+        num_ff_layer = args.num_ff_layer,
+        skip_connect = args.skip_connect,
+        num_player = args.num_player if args.use_player_id else None,
+        intent_weight=args.intent_weight,
+        use_xent_intent=args.use_xent_intent,
+        dont_onehot_xent_intent=args.dont_onehot_xent_intent,
+        train_adapt=args.train_adapt,
+        use_pred_reward=args.use_pred_reward,
+        one_way_intent=args.one_way_intent,
+        shuf_pid=args.shuf_pid,
+        intent_pred_input=args.intent_pred_input,
+        intent_arch = args.intent_arch,
     )
     agent.sync_target_with_online()
 
@@ -146,7 +180,13 @@ if __name__ == "__main__":
         print("*****done*****")
 
     agent = agent.to(args.train_device)
-    optim = torch.optim.Adam(agent.online_net.parameters(), lr=args.lr, eps=args.eps)
+    # optim = torch.optim.Adam(agent.online_net.parameters(), lr=args.lr, eps=args.eps)
+    if args.train_adapt:
+        # agent.online_net.freeze_all_but_intent_net()
+        optim = torch.optim.Adam(agent.online_net.intent_net.parameters(), lr=args.lr, eps=args.eps)
+        # optim = torch.optim.Adam(filter(lambda p: p.requires_grad, agent.online_net.parameters()), lr=args.lr, eps=args.eps)
+    else:
+        optim = torch.optim.Adam(agent.online_net.parameters(), lr=args.lr, eps=args.eps)
     print(agent)
 
     replay_buffer = rela.RNNPrioritizedReplay(
@@ -198,6 +238,12 @@ if __name__ == "__main__":
         for _ in range(args.num_player)
     ]
 
+    trend_lookback = 5
+    scores = [1e38]*trend_lookback
+    intent_losses = [1e38]*trend_lookback
+    baseline_intent_loss = 1e38
+    long_term_baseline_intent_loss = 1e38
+
     for epoch in range(args.num_epoch):
         print("beginning of epoch: ", epoch)
         print(common_utils.get_mem_usage())
@@ -218,7 +264,7 @@ if __name__ == "__main__":
             batch, weight = replay_buffer.sample(args.batchsize, args.train_device)
             stopwatch.time("sample data")
 
-            loss, priority = agent.loss(batch, args.pred_weight, stat)
+            loss, priority = agent.loss(batch, args.pred_weight, args.intent_weight, stat)
             priority = rela.aggregate_priority(
                 priority.cpu(), batch.seq_len.cpu(), args.eta
             )
@@ -263,6 +309,7 @@ if __name__ == "__main__":
             0,  # explore eps
             args.sad,
             runners=eval_runners,
+            intent_size=args.intent_size
         )
         if epoch > 0 and epoch % 50 == 0:
             force_save_name = "model_epoch%d" % epoch
@@ -275,6 +322,62 @@ if __name__ == "__main__":
             "epoch %d, eval score: %.4f, perfect: %.2f, model saved: %s"
             % (epoch, score, perfect * 100, model_saved)
         )
+
+
+        # break training loop to adjust intent weight if needed
+        if args.intent_weight > 0.:
+            intent_loss = stat['intent1'].mean()
+            scores.pop(0)
+            scores.append(score)
+            intent_losses.pop(0)
+            intent_losses.append(intent_loss)
+            if epoch == 1: # set baseline intent loss
+                baseline_intent_loss = intent_loss
+            if epoch <= 10 and intent_loss < long_term_baseline_intent_loss:
+                long_term_baseline_intent_loss = intent_loss
+            if epoch > 10:
+                # if np.all(np.array(scores) < 1.0) or \
+                if (epoch > 100 and np.all(np.array(scores) < 2.0) and np.all(np.array(intent_losses) > long_term_baseline_intent_loss*0.99)) or \
+                   ('after' in args.intent_arch and epoch > 50 and np.all(np.array(scores) < 2.0)):
+                    print("last five scores are all below 1 - restart")
+                    success = False
+                    context.terminate()
+                    while not context.terminated():
+                        time.sleep(0.5)
+                    for runner in eval_runners:
+                        runner.stop()
+                    del agent
+                    del replay_buffer
+                    del act_group
+                    del context
+                    del eval_agent
+                    del eval_runners
+                    del games
+                    args.intent_weight /= 1.1
+                    print("RELOAD: dec intent_weight to %6.5f"%args.intent_weight)
+                    break
+                # if (score > 1.0 and intent_loss > baseline_intent_loss) or \
+                # if (np.all(np.array(scores) > 5.0) and np.all(np.array(intent_losses) > long_term_baseline_intent_loss)) or \
+                if (np.all(np.array(scores) > 8.0) and np.all(np.array(intent_losses) > long_term_baseline_intent_loss*0.99)) or \
+                   (epoch > 50 and np.all(np.array(scores) > 10.0) and np.all(np.array(intent_losses) > long_term_baseline_intent_loss*0.98)):
+                    print("intent loss is not decreasing below baseline - restart")
+                    success = False
+                    context.terminate()
+                    while not context.terminated():
+                        time.sleep(0.5)
+                    for runner in eval_runners:
+                        runner.stop()
+                    del agent
+                    del replay_buffer
+                    del act_group
+                    del context
+                    del eval_agent
+                    del eval_runners
+                    del games
+                    args.intent_weight *= 1.1
+                    print("RELOAD: inc intent_weight to %6.5f"%args.intent_weight)
+                    break
+
 
         gc.collect()
         context.resume()

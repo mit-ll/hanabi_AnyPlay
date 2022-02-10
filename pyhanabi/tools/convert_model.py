@@ -47,23 +47,6 @@ def load_prebrief_model(weight_files, device, recv_or_send='recv'):
         if "obl.pthw" in weight_file:
             agents.append(obl_model)
             continue
-        
-        if "all_obl_models" in weight_file:
-            state_dict = torch.load(weight_file)
-            if "core_ffn.1.weight" in state_dict:
-                state_dict.pop("core_ffn.1.weight")
-                state_dict.pop("core_ffn.1.bias")
-                state_dict.pop("core_ffn.3.weight")
-                state_dict.pop("core_ffn.3.bias")
-                state_dict.pop("pred_2nd.weight")
-                state_dict.pop("pred_2nd.bias")
-                state_dict.pop("pred_t.weight")
-                state_dict.pop("pred_t.bias")
-
-            obl_model.online_net.load_state_dict(state_dict)
-            obl_model.sync_target_with_online()
-            agents.append(obl_model)
-            continue
 
         sad = "sad" in weight_file or "aux" in weight_file
         iql = "iql" in weight_file
@@ -139,8 +122,7 @@ def load_prebrief_model(weight_files, device, recv_or_send='recv'):
             hid_dim, output_dim, 2, 5, intent_size, False, num_player=len(weight_files) if pid else None, \
             num_ff_layer=num_ff_layer, skip_connect=skip_connect, train_adapt=train_adapt, use_xent_intent=use_xent_intent, \
             intent_weight=intent_weight, dont_onehot_xent_intent=dont_onehot_xent_intent, one_way_intent=one_way_intent, \
-            # recv_or_send='both' if not use_xent_intent else recv_or_send, shuf_pid=shuf_pid, #don't know why i put the if statment for recv_or_send...
-            recv_or_send=recv_or_send, shuf_pid=shuf_pid,
+            recv_or_send='both' if not use_xent_intent else recv_or_send, shuf_pid=shuf_pid,
             intent_pred_input=intent_pred_input, intent_arch=intent_arch
         ).to(device)
         utils.load_weight(agent.online_net, weight_file, device)
@@ -238,12 +220,6 @@ def model_name(exp_path):
         return exp_path[exp_path.index("models")+10:].replace("/","_")
     elif "models/sad_models" in exp_path:
         return exp_path[exp_path.index("models")+18:].replace("/","_")
-    elif "models/all_obl_models" in exp_path:
-        afterOBL = exp_path.split("icml_OBL")[1]
-        belief_level = int(afterOBL[0])
-        folder = exp_path.split("/model0.")[0]
-        model_id = folder[-1]
-        return "OBL%d_%s"%(belief_level, model_id)
     elif "models/obl" in exp_path:
         return exp_path[exp_path.index("models")+11:].replace("/","_")
     else:
@@ -286,12 +262,6 @@ def evaluate_agent_pairs(exp_dict, num_game, seed, bomb, device, num_run=1, prio
                     with open(exp_file, "rb") as rf:
                         model_hashes[model_name(exp_file)] = str(hashlib.sha1(rf.read()).hexdigest())
                     exps_to_pair.append(exp_file)
-        elif "models/all_obl_models" in exp:
-            assert 'model0.pthw' in exp_dict[exp]
-            exp_file = os.path.join(exp, 'model0.pthw')
-            with open(exp_file, "rb") as rf:
-                model_hashes[model_name(exp_file)] = str(hashlib.sha1(rf.read()).hexdigest())
-            exps_to_pair.append(exp_file)
         elif "models/obl" in exp:
             assert 'obl.pthw' in exp_dict[exp]
             exp_file = os.path.join(exp, 'obl.pthw')
@@ -358,47 +328,50 @@ def evaluate_agent_pairs(exp_dict, num_game, seed, bomb, device, num_run=1, prio
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--paper", default="sad", type=str, help="sad/op/obl")
+    parser.add_argument("--paper", default="prebrief", type=str, help="sad/op/obl/prebrief")
     # parser.add_argument("--num_game", default=5000, type=int) #5000 as default was causing LL stuff to crash with "Resource temporarility unavailable"
-    parser.add_argument("--num_game", default=2500, type=int)
-    parser.add_argument("--total_game", default=None, type=int)
+    # parser.add_argument("--num_game", default=2500, type=int)
+    # parser.add_argument("--total_game", default=None, type=int)
     parser.add_argument("--recv_or_send", default="recv", type=str)
-    parser.add_argument(
-        "--num_run", default=1, type=int, help="total num game = num_game * num_run"
-    )
+    # parser.add_argument(
+    #     "--num_run", default=1, type=int, help="total num game = num_game * num_run"
+    # )
     # config for model from sad paper
     parser.add_argument("--weight", action="append", default=None, type=str)
-    parser.add_argument("--expfolder", action="append", default=None, type=str)
-    parser.add_argument("--save_file", default="paired_results.json", type=str)
+    # parser.add_argument("--expfolder", action="append", default=None, type=str)
+    # parser.add_argument("--save_file", default="paired_results.json", type=str)
     parser.add_argument("--num_player", default=None, type=int)
     # config for model from op paper
     parser.add_argument(
         "--method", default="sad-aux-op", type=str, help="sad-aux-op/sad-aux/sad-op/sad"
     )
-    parser.add_argument("--idx1", default=1, type=int, help="which model to use?")
-    parser.add_argument("--idx2", default=1, type=int)
+    # parser.add_argument("--idx1", default=1, type=int, help="which model to use?")
+    # parser.add_argument("--idx2", default=1, type=int)
     parser.add_argument("--device", default="cuda:0", type=str)
 
     args = parser.parse_args()
 
-    if args.expfolder:
-        exp_dict = {}
-        for expfolder in args.expfolder:
-            for root, dirs, files in os.walk(expfolder):
-                for file in files:
-                    if ".pthw" in file:
-                        if root not in exp_dict.keys():
-                            exp_dict[root] = []
-                        exp_dict[root].append(file)
-                        # if root+".config" not in exp_dict.keys():
-                        #     exp_dict[root+".config"] = utils.get_train_config(os.path.join(root,file))
+    # if args.expfolder:
+    #     exp_dict = {}
+    #     for expfolder in args.expfolder:
+    #         for root, dirs, files in os.walk(expfolder):
+    #             for file in files:
+    #                 if ".pthw" in file:
+    #                     if root not in exp_dict.keys():
+    #                         exp_dict[root] = []
+    #                     exp_dict[root].append(file)
+    #                     # if root+".config" not in exp_dict.keys():
+    #                     #     exp_dict[root+".config"] = utils.get_train_config(os.path.join(root,file))
 
-        evaluate_agent_pairs(
-        # agents, args.num_game, 1, 0, num_run=args.num_run, device=args.device
-        exp_dict, args.num_game, 1337, 0, num_run=args.num_run, save_file=args.save_file, device=args.device, recv_or_send=args.recv_or_send,
-        )
-        quit()
+    #     evaluate_agent_pairs(
+    #     # agents, args.num_game, 1, 0, num_run=args.num_run, device=args.device
+    #     exp_dict, args.num_game, 1337, 0, num_run=args.num_run, save_file=args.save_file, device=args.device, recv_or_send=args.recv_or_send,
+    #     )
+    #     quit()
 
+
+
+    args.num_player = 2
 
     intent_size = 0
     if len(args.weight) == 1:
@@ -412,11 +385,13 @@ if __name__ == "__main__":
         assert (type(args.weight) is list and all([os.path.exists(wt) for wt in args.weight])) or \
                os.path.exists(args.weight)
         # we are doing self player, all players use the same weight
+        if type(args.weight) is not list:
+            args.weight = [args.weight]
         weight_files = args.weight
         while len(weight_files) < args.num_player:
             weight_files.append(weight_files[-1])
         # weight_files = [args.weight for _ in range(args.num_player)]
-        agents, intent_size = load_prebrief_model(weight_files, args.device, recv_or_send=args.recv_or_send)
+        agents, intent_size = load_prebrief_model(weight_files, args.device)
         
         # cfgs = [utils.get_train_config(weight_file) for weight_file in weight_files] #assumes all agents have same intent size
         # intent_size =  np.max([0 if "intent_size" not in cfg.keys() else cfg["intent_size"] for cfg in cfgs])
@@ -426,11 +401,14 @@ if __name__ == "__main__":
     elif args.paper == "obl":
         agents = [obl_model, obl_model]
 
-    if args.total_game is not None:
-        args.num_run = args.total_game // args.num_game
+    for agent, weight_file in zip(agents, args.weight):
+        agent.save(weight_file.replace("pthw","pth"))
 
-    # fast evaluation for 5k games
-    evaluate_agents(
-        # agents, args.num_game, 1, 0, num_run=args.num_run, device=args.device
-        agents, args.num_game, 1337, 0, num_run=args.num_run, device=args.device, intent_size=intent_size
-    )
+    # if args.total_game is not None:
+    #     args.num_run = args.total_game // args.num_game
+
+    # # fast evaluation for 5k games
+    # evaluate_agents(
+    #     # agents, args.num_game, 1, 0, num_run=args.num_run, device=args.device
+    #     agents, args.num_game, 1337, 0, num_run=args.num_run, device=args.device, intent_size=intent_size
+    # )

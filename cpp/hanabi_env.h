@@ -34,6 +34,9 @@ class HanabiEnv : public rela::Env {
       , shuffleColor_(shuffleColor)
       , verbose_(verbose)
       , playerEps_(game_.NumPlayers())
+      , playerIds_(game_.NumPlayers())
+      , playerShufIds_(game_.NumPlayers())
+      , playerIntents_(game_.NumPlayers())
       , numStep_(0)
       , colorPermutes_(game_.NumPlayers())
       , invColorPermutes_(game_.NumPlayers())
@@ -159,6 +162,9 @@ class HanabiEnv : public rela::Env {
   const bool verbose_;
 
   std::vector<float> playerEps_;
+  std::vector<int> playerIds_;
+  std::vector<int> playerShufIds_;
+  std::vector<torch::Tensor> playerIntents_;
 
   int numStep_;
   std::vector<std::vector<int>> colorPermutes_;

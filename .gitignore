@@ -5,6 +5,7 @@ cmake-build-debug/
 */__pycache__/*
 .DS_Store
 pyhanabi/exps
+pyhanabi/old_exps
 sweep
 sweep_*
 plot.png
@@ -13,3 +14,5 @@ sweep*.py
 models/*
 !models/download.sh
 !models/op_raw_data.txt
+pyhanabi/slurm_out/*.txt
+pyhanabi/slurm_out_old/*.txt

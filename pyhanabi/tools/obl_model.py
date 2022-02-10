@@ -281,17 +281,53 @@ class R2D2Agent(torch.jit.ScriptModule):
         random_action = legal_move.multinomial(1).squeeze(1)
         rand = torch.rand(greedy_action.size(), device=greedy_action.device)
         assert rand.size() == eps.size()
-        rand = (rand < eps).long()
+        # rand = (rand < eps).long()
 
         if self.greedy:
             action = greedy_action
         else:
-            action = (greedy_action * (1 - rand) + random_action * rand).detach().long()
+            # action = (greedy_action * (1 - rand) + random_action * rand).detach().long()
+            action = torch.where(rand < eps, random_action, greedy_action).detach()
 
         reply["a"] = action.unsqueeze(1).detach().cpu()
         reply["greedy_a"] = action.unsqueeze(1).detach().cpu()
         reply["h0"] = new_hid["h0"].detach().cpu()
         reply["c0"] =  new_hid["c0"].detach().cpu()
+        return reply
+    
+    
+    @torch.jit.script_method
+    def forward(self, obs: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+        """
+        Added method to work with Hanabi_SPARTA repo
+        
+        Acts on the given obs, with eps-greedy policy.
+        output: {'a' : actions}, a long Tensor of shape
+            [batchsize] or [batchsize, num_player]
+        """
+        if "s" in obs.keys():
+            priv_s = obs["s"]
+        elif "priv_s" in obs.keys():
+            priv_s = obs["priv_s"]
+        else:
+            assert False, "s and priv_s not present in obs"
+        priv_s = priv_s.squeeze(1)
+        # assume input is the SAD version, we will do a hacky conversion
+        assert priv_s.size(1) == 838
+        priv_s = priv_s[:, :783]  # remove greedy action
+        priv_s = priv_s[:, 125:]  # remove my hand (zero)
+        publ_s = priv_s[:, 125:]  # remove partner's hand (non-zero)
+
+        h0 = obs["h0"].unsqueeze(0)
+        c0 = obs["c0"].unsqueeze(0)
+
+        hid = {"h0": h0, "c0": c0}        
+        action, new_hid = self.online_net.act(priv_s, publ_s, hid)
+        
+        reply = {}
+        reply["a"] = action.unsqueeze(1).detach()
+        reply["h0"] = new_hid["h0"].flatten(0,1).detach()
+        reply["c0"] =  new_hid["c0"].flatten(0,1).detach()
         return reply
 
 
@@ -310,7 +346,7 @@ obl_model = R2D2Agent(
 
 import os
 root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-model_file = os.path.join(root, 'models', 'obl', 'obl.pthw')
+model_file = os.path.join(root, 'models_unused', 'obl', 'obl.pthw')
 state_dict = torch.load(model_file)
 state_dict.pop("core_ffn.1.weight")
 state_dict.pop("core_ffn.1.bias")

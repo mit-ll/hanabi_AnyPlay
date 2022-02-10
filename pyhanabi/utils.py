@@ -73,6 +73,7 @@ def load_agent(weight_file, overwrite):
         1,
         cfg["num_player"],
         cfg["train_bomb"],
+        cfg["intent_size"]
         [0], # explore_eps,
         [100], # boltzmann_t,
         cfg["max_len"],
@@ -95,6 +96,7 @@ def load_agent(weight_file, overwrite):
         "num_lstm_layer": cfg.get("num_lstm_layer", overwrite.get("num_lstm_layer", 2)),
         "boltzmann_act": overwrite.get("boltzmann_act", cfg["boltzmann_act"]),
         "uniform_priority": overwrite.get("uniform_priority", False),
+        "num_player": overwrite.get("num_player", cfg["num_player"]),
     }
 
     agent = r2d2.R2D2Agent(**config).to(config["device"])

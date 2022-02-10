@@ -7,17 +7,8 @@
 # LICENSE file in the root directory of this source tree.
 #
 
-#SBATCH --gres=gpu:volta:2
-#SBATCH -p gaia 
-#SBATCH -o slurm_out/output_sad_2p_%j.txt
-#SBATCH -e slurm_out/error_sad_2p_%j.txt
-#SBATCH --job-name=hanabi_sad_2player_%j
-#SBATCH --exclusive
-
-eval "$(conda shell.bash hook)";
-conda activate py38;
-python -u selfplay.py \
-       --save_dir exps/sad_2p_$SLURM_JOB_ID \
+python -u selfplay_reloader.py \
+       --save_dir exps_awa32-ep5k/awa-xe32_aux_2ffsk \
        --num_thread 80 \
        --num_game_per_thread 80 \
        --method vdn \
@@ -28,9 +19,10 @@ python -u selfplay.py \
        --eps 1.5e-05 \
        --grad_clip 5 \
        --gamma 0.999 \
-       --seed 9 \
+       --seed 123456 \
        --batchsize 128 \
        --burn_in_frames 10000 \
+       --replay_buffer_size 131072 \
        --replay_buffer_size 131072 \
        --epoch_len 1000 \
        --priority_exponent 0.9 \
@@ -41,3 +33,14 @@ python -u selfplay.py \
        --rnn_hid_dim 512 \
        --multi_step 3 \
        --act_device cuda:0,cuda:1 \
+       --intent_weight 0.2 \
+       --intent_size 32 \
+       --pred_weight 0.25 \
+       --num_ff_layer 2 \
+       --skip_connect \
+       --use_xent_intent \
+       --one_way_intent \
+       --use_player_id \
+       --shuf_pid \
+       --intent_arch after \
+       --num_epoch 500 \

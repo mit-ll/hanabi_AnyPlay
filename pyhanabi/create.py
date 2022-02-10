@@ -26,6 +26,7 @@ def create_envs(
     seed,
     num_player,
     hand_size,
+    intent_size,
     bomb,
     explore_eps,
     max_len,
@@ -38,6 +39,7 @@ def create_envs(
         params = {
             "players": str(num_player),
             "hand_size": str(hand_size),
+            "intent_size": str(intent_size),
             "seed": str(seed + game_idx),
             "bomb": str(bomb),
         }
