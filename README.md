@@ -1,3 +1,54 @@
+# Overview: Any-Play Learning Augmentation for Zero-Shot Coordination
+
+![AnyPlay_diagram.png]()
+
+This library implements the [Any-Play learning augmentation](https://arxiv.org/abs/2201.12436) in [Hanabi Learning Environment](https://github.com/hengyuan-hu/hanabi-learning-environment). Any-Play is an intrisictly-motivated, diversity-based augmentation for reinforcement learning algorithms (RL) that enables RL agents to effectively cooperate with novel, never-before-seen teammates on collaborative tasks; referred to as zero-shot coordination. This library is used to train and demonstrate such teaming in the cooperative card game Hanabi; although the Any-Play augmentation is environment agnostic, and therefore, could be applied to many other domains beyone Hanabi.
+
+This library is a direct extension of the [`hanabi_SAD` library](https://github.com/facebookresearch/hanabi_SAD) and is modified and redistributed under the same [CC BY-NC license](https://creativecommons.org/licenses/by-nc/4.0/)
+
+# Citation
+
+When using this library please cite the [Any-Play](https://arxiv.org/abs/2201.12436) paper as well as the orginal [Other-Play](https://arxiv.org/abs/2003.02979) and [Simplified Action Decoder](https://arxiv.org/abs/1912.02288) works on which this is based
+
+Any-Play
+```
+@article{lucas2022any,
+  title={Any-Play: An Intrinsic Augmentation for Zero-Shot Coordination},
+  author={Lucas, Keane and Allen, Ross E},
+  journal={arXiv preprint arXiv:2201.12436},
+  year={2022}
+}
+```
+
+
+Other-Play
+```
+@incollection{icml2020_5369,
+ author = {Hu, Hengyuan and Peysakhovich, Alexander and Lerer, Adam and Foerster, Jakob},
+ booktitle = {Proceedings of Machine Learning and Systems 2020},
+ pages = {9396--9407},
+ title = {\textquotedblleft Other-Play\textquotedblright  for Zero-Shot Coordination},
+ year = {2020}
+}
+
+```
+
+Simplfied Action Decoder
+```
+@inproceedings{
+Hu2020Simplified,
+title={Simplified Action Decoder for Deep Multi-Agent Reinforcement Learning},
+author={Hengyuan Hu and Jakob N Foerster},
+booktitle={International Conference on Learning Representations},
+year={2020},
+url={https://openreview.net/forum?id=B1xm3RVtwB}
+}
+```
+
+# Disclaimer
+
+------
+
 # Other-Play & Simplified Action Decoder in Hanabi
 
 ## Important Update, Mar-2021
