@@ -8,7 +8,7 @@
 #
 
 python -u selfplay_reloader.py \
-       --save_dir exps_awa32-ep5k/awa-xe32_aux_2ff \
+       --save_dir exps_awa64/awa-xe64_aux_2ff \
        --num_thread 80 \
        --num_game_per_thread 80 \
        --method vdn \
@@ -34,7 +34,7 @@ python -u selfplay_reloader.py \
        --multi_step 3 \
        --act_device cuda:0,cuda:1 \
        --intent_weight 0.2 \
-       --intent_size 32 \
+       --intent_size 64 \
        --pred_weight 0.25 \
        --num_ff_layer 2 \
        --use_xent_intent \

@@ -50,7 +50,6 @@ def parse_args():
     parser.add_argument("--use_xent_intent", action="store_true", default=False)
     parser.add_argument("--dont_onehot_xent_intent", action="store_true", default=False)
     parser.add_argument("--one_way_intent", action="store_true", default=False)
-    parser.add_argument("--train_adapt", action="store_true", default=False)
     parser.add_argument("--use_player_id", action="store_true", default=False, \
                         help="whether to provide player ID as observations to agents")
     parser.add_argument("--shuf_pid", action="store_true", default=False, \
@@ -98,7 +97,6 @@ def parse_args():
 
     args = parser.parse_args()
     assert args.method in ["vdn", "iql"]
-    assert not args.train_adapt or len(args.load_model) > 0
     return args
 
 
@@ -165,7 +163,6 @@ if __name__ == "__main__":
         intent_weight=args.intent_weight,
         use_xent_intent=args.use_xent_intent,
         dont_onehot_xent_intent=args.dont_onehot_xent_intent,
-        train_adapt=args.train_adapt,
         use_pred_reward=args.use_pred_reward,
         one_way_intent=args.one_way_intent,
         shuf_pid=args.shuf_pid,
@@ -180,13 +177,7 @@ if __name__ == "__main__":
         print("*****done*****")
 
     agent = agent.to(args.train_device)
-    # optim = torch.optim.Adam(agent.online_net.parameters(), lr=args.lr, eps=args.eps)
-    if args.train_adapt:
-        # agent.online_net.freeze_all_but_intent_net()
-        optim = torch.optim.Adam(agent.online_net.intent_net.parameters(), lr=args.lr, eps=args.eps)
-        # optim = torch.optim.Adam(filter(lambda p: p.requires_grad, agent.online_net.parameters()), lr=args.lr, eps=args.eps)
-    else:
-        optim = torch.optim.Adam(agent.online_net.parameters(), lr=args.lr, eps=args.eps)
+    optim = torch.optim.Adam(agent.online_net.parameters(), lr=args.lr, eps=args.eps)
     print(agent)
 
     replay_buffer = rela.RNNPrioritizedReplay(
@@ -336,7 +327,6 @@ if __name__ == "__main__":
             if epoch <= 10 and intent_loss < long_term_baseline_intent_loss:
                 long_term_baseline_intent_loss = intent_loss
             if epoch > 10:
-                # if np.all(np.array(scores) < 1.0) or \
                 if (epoch > 100 and np.all(np.array(scores) < 2.0) and np.all(np.array(intent_losses) > long_term_baseline_intent_loss*0.99)) or \
                    ('after' in args.intent_arch and epoch > 50 and np.all(np.array(scores) < 2.0)):
                     print("last five scores are all below 1 - restart")
@@ -356,8 +346,6 @@ if __name__ == "__main__":
                     args.intent_weight /= 1.1
                     print("RELOAD: dec intent_weight to %6.5f"%args.intent_weight)
                     break
-                # if (score > 1.0 and intent_loss > baseline_intent_loss) or \
-                # if (np.all(np.array(scores) > 5.0) and np.all(np.array(intent_losses) > long_term_baseline_intent_loss)) or \
                 if (np.all(np.array(scores) > 8.0) and np.all(np.array(intent_losses) > long_term_baseline_intent_loss*0.99)) or \
                    (epoch > 50 and np.all(np.array(scores) > 10.0) and np.all(np.array(intent_losses) > long_term_baseline_intent_loss*0.98)):
                     print("intent loss is not decreasing below baseline - restart")

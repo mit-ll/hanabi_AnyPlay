@@ -34,7 +34,6 @@ class R2D2Net(torch.jit.ScriptModule):
         num_ff_layer,
         skip_connect,
         player_embed_dim = 8,
-        train_intent_net = False,
         use_xent_intent = False,
         intent_pred_input = 'lstm_o',
         intent_arch = 'concat',
@@ -49,7 +48,6 @@ class R2D2Net(torch.jit.ScriptModule):
         self.intent_size = intent_size
         self.skip_connect = skip_connect
         self.num_player = num_player
-        self.train_intent_net = train_intent_net
         self.use_xent_intent = use_xent_intent
         self.intent_pred_input = intent_pred_input
         self.intent_arch = intent_arch
@@ -67,19 +65,6 @@ class R2D2Net(torch.jit.ScriptModule):
         if self.intent_arch != 'concat':
             intent_embed_layers = [nn.Linear(self.intent_size + self.player_embed_dim, self.hid_dim), nn.ReLU()]
             self.intent_embed = nn.Sequential(*intent_embed_layers)
-
-        # print("intent",self.intent_size)
-        # print("player_embed_dim",self.player_embed_dim)
-        # print("in_dim",self.in_dim)
-        self.intent_net = None
-        if self.train_intent_net and self.intent_size > 0:
-            # intent_layers = [nn.Linear(self.hid_dim, self.hid_dim), nn.ReLU(), \
-            intent_layers = [nn.Linear(self.in_dim + self.player_embed_dim - self.intent_size, self.hid_dim), nn.ReLU(), \
-                            # nn.Linear(self.hid_dim, self.hid_dim), nn.ReLU(),
-                             nn.Linear(self.hid_dim, self.intent_size)]
-            if use_xent_intent:
-                intent_layers.append(nn.Sigmoid())
-            self.intent_net = nn.Sequential(*intent_layers)
 
         ff_layers = [nn.Linear(self.in_dim + self.player_embed_dim, self.hid_dim), nn.ReLU()]
         for i in range(1, self.num_ff_layer):
@@ -105,51 +90,11 @@ class R2D2Net(torch.jit.ScriptModule):
             else:                
                 self.pred_intent = nn.Sequential(nn.Linear(self.hid_dim, self.hid_dim), nn.ReLU(), nn.Linear(self.hid_dim, self.intent_size))
 
-    def freeze_all_but_intent_net(self):
-        #freeze all parameters besides intent_net
-        for p in self.parameters():
-            p.requires_grad = False
-        for p in self.intent_net.parameters():
-            p.requires_grad = True
-
     @torch.jit.script_method
     def get_h0(self, batchsize: int) -> Dict[str, torch.Tensor]:
         shape = (self.num_lstm_layer, batchsize, self.hid_dim)
         hid = {"h0": torch.zeros(*shape), "c0": torch.zeros(*shape)}
         return hid
-
-    @torch.jit.script_method
-    def adapt_intent(
-        self, priv_s: torch.Tensor, player_ids:torch.Tensor, hid: Dict[str, torch.Tensor]
-    ) -> torch.Tensor:
-        assert (
-            priv_s.dim() == 3 or priv_s.dim() == 2
-        ), "dim = 3/2, [seq_len(optional), batch, dim]"
-
-        one_step = False
-        if priv_s.dim() == 2:
-            priv_s = priv_s.unsqueeze(0)
-            player_ids = player_ids.unsqueeze(0)
-            # c0 = hid["c0"][-1,...]
-            # c0 = c0.unsqueeze(0)
-            one_step = True
-        else:
-            # c0 = hid["c0"][:,-1,...]
-            pass
-
-        if self.num_player is not None:
-            plyr_embed = self.player_embed(player_ids)
-            priv_s = torch.cat((priv_s, plyr_embed), dim=-1)
-        # adapted_intent = self.intent_net(c0)
-        
-        adapted_intent = player_ids #this should never be the value, doing this to get JIT script to compile
-        if self.intent_net is not None:
-            # adapted_intent = self.intent_net(priv_s)
-            adapted_intent = self.intent_net(torch.zeros_like(priv_s)) #doing this to see if we can just find optimal intent for player 0
-
-        if one_step:
-            adapted_intent = adapted_intent.squeeze(0)
-        return adapted_intent
 
     @torch.jit.script_method
     def act(
@@ -216,17 +161,7 @@ class R2D2Net(torch.jit.ScriptModule):
         if 'only' in self.intent_arch:
             priv_s[...,-(self.intent_size + self.player_embed_dim):] = 0.
             
-        # if torch.any(priv_s > 1000):
-        #     print("priv_s has large value")
         x = self.net(priv_s)
-        # if torch.any(torch.isnan(x)):
-        #     print("x is nan")
-        #     if torch.any(priv_s > 1000):
-        #         print("priv_s has large value")
-        #     if torch.any(torch.isnan(priv_s)):
-        #         print("priv_s is nan")
-        #     # print("priv_s",priv_s)
-        #     # print("x",x)
 
         if int_embed is not None and 'before' in self.intent_arch:
             x = x + int_embed
@@ -239,10 +174,6 @@ class R2D2Net(torch.jit.ScriptModule):
             o = o + x
         if int_embed is not None and 'after' in self.intent_arch:
             o = o + int_embed
-        # if torch.any(torch.isnan(o)):
-        #     print ("o is nan")
-        #     print("x",x)
-        #     print("hid",hid)
         a = self.fc_a(o)
         v = self.fc_v(o)
         q = self._duel(v, a, legal_move)
@@ -283,7 +214,6 @@ class R2D2Net(torch.jit.ScriptModule):
             min=1e-6
         )
 
-        # print("xentsize", xent.size())
         if xent.dim() == 3:
             # [seq, batch, num_player]
             xent = xent.mean(2)
@@ -303,30 +233,20 @@ class R2D2Net(torch.jit.ScriptModule):
         target_p = player_intents[:,:,own_intent_mask,:]
         target_p_size = target_p.size()
         max_seq_len = target_p_size[0]
-        # print("target_p_size", target_p.size())
         logit = self.pred_intent(lstm_o).view(target_p.size())
-        # print((target_p[0,0,0,0]))
          
         # shape should be [seq_len, batch, (num_player-1) * num_player]
         # (sqrt is over each other player, not all players)
-        # squared_loss = nn.functional.mse_loss(logit, target_p)
         squared_loss = torch.sqrt(torch.square(logit - target_p).sum(-1) + 1e-10)
-        # squared_loss = torch.square(logit - target_p).sum(-1)
 
         # mean over all players 
         # shape should be [seq_len, batch]
-        # squared_loss = squared_loss.mean(-1)
-        # print("SQUAREDLOSS:",squared_loss)
-        # print("SQUAREDLOSS:",squared_loss.size())
-        # print("squaredlosssize",squared_loss.size())
         if squared_loss.dim() == 3:
             # [seq, batch, num_player]
             squared_loss = squared_loss.mean(2)
-            # print("ifstatement",squared_loss.size())  
 
         mask = torch.arange(0, max_seq_len, device=seq_len.device)
         mask = (mask.unsqueeze(1) < seq_len.unsqueeze(0)).float()
-        # mask = (mask.unsqueeze(1) == seq_len.unsqueeze(0)-1).float() #This makes the loss and reward for intent only pertinent at the end
         squared_loss *= mask
 
         # save before sum out
@@ -334,27 +254,19 @@ class R2D2Net(torch.jit.ScriptModule):
         squared_loss = squared_loss.sum(0)
         assert squared_loss.size() == seq_len.size()
         avg_squared_loss = (squared_loss / seq_len).mean().item()
-        # avg_squared_loss = (squared_loss).mean().item()
-        return squared_loss, avg_squared_loss, logit, seq_squared_loss#.detach()
+        return squared_loss, avg_squared_loss, logit, seq_squared_loss
     
     def intent_crossentropy_loss(self, lstm_o: torch.Tensor, player_intents: torch.Tensor, own_intent_mask: torch.Tensor, seq_len: torch.Tensor):
         # target_p: [seq_len, batch, num_player, intent_size]
         # own_intent_mask: [(num_player-1) * num_player]
-        
-        #softmax logit output
-        #get - log likelihood of correct intent
 
         # reshape/reorder target_p to [seq_len, batch, num_player * (num_player-1), intent_size]
         target_p = player_intents[:,:,own_intent_mask,:]
         target_p_size = target_p.size()
         max_seq_len = target_p_size[0] 
         target_onehot = nn.functional.one_hot(target_p.argmax(-1), num_classes=target_p_size[-1])
-        # target_onehot = torch.zeros(target_p_size).to(device)
-        # target_onehot[target_p.argmax(-1, keepdim=True)] = 1
         
-        # print("target_p_size", target_p.size())
         logit = self.pred_intent(lstm_o).view(target_p_size)
-        # print((target_p[0,0,0,0]))
         q = nn.functional.softmax(logit, -1)
         logq = nn.functional.log_softmax(logit, -1)
         plogq = (target_onehot * logq).sum(-1)
@@ -365,22 +277,16 @@ class R2D2Net(torch.jit.ScriptModule):
         if xent.dim() == 3:
             # [seq, batch, num_player]
             xent = xent.mean(2)
-            # print("ifstatement",squared_loss.size())  
-
-        # print("true: ", target_onehot[:6,0,0], "predicted: ", q[:6,0,0])
 
         mask = torch.arange(0, max_seq_len, device=seq_len.device)
         mask = (mask.unsqueeze(1) < seq_len.unsqueeze(0)).float()
-        # mask = (mask.unsqueeze(1) == seq_len.unsqueeze(0)-1).float() #This makes the loss and reward for intent only pertinent at the end
         xent *= mask
 
         # save before sum out
         seq_xent = xent
         xent = xent.sum(0)
-        # xent = xent.sum(0) / seq_len #attempting to normalize for episode length
         assert xent.size() == seq_len.size()
         avg_xent = (xent / seq_len).mean().item()
-        # avg_xent = (xent).mean().item()
         return xent, avg_xent, q, seq_xent.detach()
 
     def pred_loss_1st(self, lstm_o, target, hand_slot_mask, seq_len):
@@ -417,7 +323,6 @@ class R2D2Agent(torch.jit.ScriptModule):
         use_xent_intent = False,
         intent_weight = 0.,
         dont_onehot_xent_intent = False,
-        train_adapt = False,
         use_pred_reward = False,
         one_way_intent = False,
         recv_or_send = 'both',
@@ -440,7 +345,6 @@ class R2D2Agent(torch.jit.ScriptModule):
             num_ff_layer,
             skip_connect,
             player_embed_dim=player_embed_dim,
-            train_intent_net=train_adapt,
             use_xent_intent=use_xent_intent,
             intent_pred_input=intent_pred_input,
             intent_arch=intent_arch,
@@ -457,7 +361,6 @@ class R2D2Agent(torch.jit.ScriptModule):
             num_ff_layer,
             skip_connect,
             player_embed_dim=player_embed_dim,
-            train_intent_net=train_adapt,
             use_xent_intent=use_xent_intent,
             intent_pred_input=intent_pred_input,
             intent_arch=intent_arch,
@@ -470,7 +373,6 @@ class R2D2Agent(torch.jit.ScriptModule):
         self.intent_size = intent_size
         self.use_xent_intent = use_xent_intent
         self.intent_weight = intent_weight
-        self.train_adapt = train_adapt
         self.use_pred_reward = use_pred_reward
         self.dont_onehot_xent_intent = dont_onehot_xent_intent
         self.one_way_intent = one_way_intent
@@ -505,7 +407,6 @@ class R2D2Agent(torch.jit.ScriptModule):
             skip_connect=self.online_net.skip_connect,
             num_player=self.online_net.num_player,
             player_embed_dim=self.online_net.player_embed_dim,
-            train_adapt=self.train_adapt,
             use_pred_reward=self.use_pred_reward,
             use_xent_intent=self.use_xent_intent,
             intent_weight=self.intent_weight,
@@ -575,27 +476,12 @@ class R2D2Agent(torch.jit.ScriptModule):
             "c0": obs["c0"].flatten(0, 1).transpose(0, 1).contiguous(),
         }
 
-        # if player_ids is not None:
-        #     plyr_embed = self.player_embed(player_ids)
-        #     priv_s = torch.cat((priv_s, plyr_embed), dim=-1)
         if player_intents is not None:
-            if self.train_adapt:
-                adapted_intents = self.online_net.adapt_intent(priv_s, player_ids, hid)
-                # print(self.player_ids_str,player_ids[:10])
-                # print("priv_s",priv_s.size())
-                # print("player_intents",player_intents.size())
-                # print("adapted_intents",adapted_intents.size())
-                # print("player_ids_expand",player_ids.unsqueeze(-1).expand(-1,self.intent_size)[:10])
-                player_intents = torch.zeros_like(player_intents) #CHEATING
-                player_intents[...,0] = 0.1 #CHEATING
-                player_intents = torch.where(player_ids.unsqueeze(-1).expand(-1,self.intent_size) == 0, adapted_intents, player_intents)#.detach()
             if self.recv_or_send == 'recv':
                 player_ids[...] = 0
             if self.recv_or_send == 'send':
                 player_ids[...] = 1
             if self.one_way_intent:
-                # assert self.online_net.num_player is not None # make sure PID is being used / commented out to allow it not to be used
-                # sender_intents = player_intents[...,1,:].expand()
                 receiver_intents = torch.zeros_like(player_intents)
                 if self.use_xent_intent:
                     receiver_intents[...,0] = 1.
@@ -608,16 +494,8 @@ class R2D2Agent(torch.jit.ScriptModule):
 
         random_action = legal_move.multinomial(1).squeeze(1)
         rand = torch.rand(greedy_action.size(), device=greedy_action.device)
-        # if torch.any(torch.isnan(rand)):
-        #     print ("rand is nan",rand)
         assert rand.size() == eps.size()
-        # rand = (rand < eps).long()
-        # action = (greedy_action * (1 - rand) + random_action * rand).detach().long()
         action = torch.where(rand < eps, random_action, greedy_action).detach()
-        # if torch.any(torch.isnan(action)):
-        #     print ("action is nan",action)
-        # if torch.any(torch.isnan(greedy_action)):
-        #     print ("greedy_action is nan",greedy_action)
 
         if self.vdn:
             action = action.view(obsize, ibsize, num_player)
@@ -669,18 +547,11 @@ class R2D2Agent(torch.jit.ScriptModule):
             "c0": obs["c0"].transpose(0, 1).contiguous(),
         }
 
-        if self.train_adapt:
-            adapted_intents = self.online_net.adapt_intent(priv_s, player_ids, hid)
-            player_intents = torch.zeros_like(player_intents).to(priv_s.device) #CHEATING
-            player_intents[...,0] = 0.1 #CHEATING
-            player_intents = torch.where(player_ids.unsqueeze(-1).expand(-1,self.intent_size) == 0, adapted_intents, player_intents)#.detach()
         if self.recv_or_send == 'recv':
             player_ids[...] = 0
         if self.recv_or_send == 'send':
             player_ids[...] = 1
         if self.one_way_intent:
-            # assert self.online_net.num_player is not None # make sure PID is being used / Commented out to allow to not use player-id
-            # sender_intents = player_intents[...,1,:].expand()
             receiver_intents = torch.zeros_like(player_intents).to(priv_s.device)
             if self.use_xent_intent:
                 receiver_intents[...,0] = 1.
@@ -744,21 +615,12 @@ class R2D2Agent(torch.jit.ScriptModule):
             "c0": input_["next_c0"].flatten(0, 1).transpose(0, 1).contiguous(),
         }
 
-        # if player_ids is not None:
-        #     plyr_embed = self.player_embed(player_ids)
-        #     priv_s = torch.cat((priv_s, plyr_embed), dim=-1)
         if player_intents is not None and self.intent_size > 0:
-            if self.train_adapt:
-                adapted_intents = self.online_net.adapt_intent(priv_s, player_ids, hid)
-                player_intents = torch.zeros_like(player_intents) #CHEATING
-                player_intents[...,0] = 0.1 #CHEATING
-                player_intents = torch.where(player_ids.unsqueeze(-1).expand(-1,self.intent_size) == 0, adapted_intents, player_intents)#.detach()
             if self.recv_or_send == 'recv':
                 player_ids[...] = 0
             if self.recv_or_send == 'send':
                 player_ids[...] = 1
             if self.one_way_intent:
-                # assert self.online_net.num_player is not None # make sure PID is being used / commented out to allow it not to be used
                 receiver_intents = torch.zeros_like(player_intents)
                 if self.use_xent_intent:
                     receiver_intents[...,0] = 1.
@@ -779,21 +641,12 @@ class R2D2Agent(torch.jit.ScriptModule):
         else:
             next_player_intents = None
 
-        # if next_player_ids is not None:
-        #     next_plyr_embed = self.player_embed(next_player_ids)
-        #     next_priv_s = torch.cat((next_priv_s, next_plyr_embed), dim=-1)
         if next_player_intents is not None:
-            if self.train_adapt:
-                next_adapted_intents = self.online_net.adapt_intent(next_priv_s, next_player_ids, next_hid)
-                next_player_intents = torch.zeros_like(next_player_intents) #CHEATING
-                next_player_intents[...,0] = 0.1 #CHEATING
-                next_player_intents = torch.where(next_player_ids.unsqueeze(-1).expand(-1,self.intent_size) == 0, next_adapted_intents, next_player_intents)#.detach()
             if self.recv_or_send == 'recv':
                 next_player_ids[...] = 0
             if self.recv_or_send == 'send':
                 next_player_ids[...] = 1
             if self.one_way_intent:
-                # assert self.online_net.num_player is not None # make sure PID is being used / commented out to allow it not to be used
                 next_receiver_intents = torch.zeros_like(next_player_intents)
                 if self.use_xent_intent:
                     next_receiver_intents[...,0] = 1.
@@ -816,22 +669,6 @@ class R2D2Agent(torch.jit.ScriptModule):
             # sum over action & player
             online_qa = online_qa.view(bsize, num_player).sum(1)
             target_qa = target_qa.view(bsize, num_player).sum(1)
-
-        # intent_loss = 0.
-        # seq_intent_loss = 0.
-        # if self.intent_weight > 0 and self.intent_size > 0:
-        #     # To add incentive to make behavior identifiable, 
-        #     # add reward for low loss of other agent
-        #     print("KEYS", input_.keys())
-        #     intent_loss, seq_intent_loss, avg_intent_loss = self.aux_task_intent_jit(
-        #         lstm_o,
-        #         player_intents.view(obsize, ibsize, num_player, self.intent_size),
-        #         # input_["seq_len"],
-        #         1,
-        #         reward.size()[1:],
-        #     )
-        #     # reward -= seq_intent_loss.detach() * self.intent_weight
-        #     reward -= seq_intent_loss * self.intent_weight
 
         assert reward.size() == bootstrap.size()
         assert reward.size() == target_qa.size()
@@ -874,42 +711,20 @@ class R2D2Agent(torch.jit.ScriptModule):
 
         assert self.player_ids_str in obs.keys()
         player_ids = obs[self.player_ids_str]
-        # print("PLAYER_IDS",player_ids[0,...])
-        # plyr_embed = self.player_embed(obs[self.player_ids_str])
-        # priv_s = torch.cat((priv_s, plyr_embed), dim=-1)
         if "player_intents" in obs.keys() and self.intent_size > 0:
             player_intents = obs["player_intents"]
             player_intents = player_intents[..., :self.intent_size]
-            if self.train_adapt:
-                # h0 and c0 do not seem available here
-                adapt_hid = {
-                #     "h0": obs["h0"].flatten(0, 1).transpose(0, 1).contiguous(),
-                #     "c0": obs["c0"].flatten(0, 1).transpose(0, 1).contiguous(),
-                }
-                # print(self.player_ids_str,player_ids.size())
-                # print("priv_s",priv_s.size())
-                # print("player_intents",player_intents.size())
-                # print("player_ids_expand",player_ids.unsqueeze(-1).expand(-1,-1,self.intent_size)[:10])
-                adapted_intents = self.online_net.adapt_intent(priv_s, player_ids, adapt_hid)
-                # print("adapted_intents",adapted_intents.size())
-                player_intents = torch.zeros_like(player_intents) #CHEATING
-                player_intents[...,0] = 0.1 #CHEATING
-                player_intents = torch.where(player_ids.unsqueeze(-1).expand(-1,-1,self.intent_size) == 0, adapted_intents, player_intents)#.detach()
             if self.recv_or_send == 'recv':
                 player_ids[...] = 0
             if self.recv_or_send == 'send':
                 player_ids[...] = 1
             if self.one_way_intent:
-                # assert self.online_net.num_player is not None # make sure PID is being used / commented out to allow it not to be used
                 receiver_intents = torch.zeros_like(player_intents)
                 if self.use_xent_intent:
                     receiver_intents[...,0] = 1.
                 player_intents = torch.where(player_ids.unsqueeze(-1).expand(-1,-1,self.intent_size) == 0, receiver_intents, player_intents)
-                # print("PLAYER_IDS",player_ids.unsqueeze(-1).expand(-1,-1,self.intent_size))
-                # print("PLAYER_INTENTS before", player_intents)
             if self.use_xent_intent and not self.dont_onehot_xent_intent:
                 player_intents = nn.functional.one_hot(player_intents.argmax(-1), num_classes=player_intents.size()[-1])
-                # print("PLAYER_INTENTS after", player_intents)
             priv_s = torch.cat((priv_s, player_intents), dim=-1)
         else:
             player_intents = None
@@ -921,18 +736,6 @@ class R2D2Agent(torch.jit.ScriptModule):
         online_qa, greedy_a, _, lstm_o, lstm_c = self.online_net(
             priv_s, player_ids, legal_move, action, hid
         )
-
-        # if torch.any(torch.isnan(lstm_o)):
-        #     print ("lstm_o is nan")
-        #     print([('obs',obs),('action',action),("legal_move",legal_move),("hid",hid)])
-        #     for dictname, dictthing in [('obs',obs),('action',action),("legal_move",legal_move),("hid",hid)]:
-        #         if type(dictthing) is dict:
-        #             for key in dictthing.keys():
-        #                 if torch.any(torch.isnan(dictthing[key])):
-        #                     print(dictname, key, dictthing[key])
-        #         else:
-        #             if torch.any(torch.isnan(dictthing)):
-        #                 print(dictname, dictthing)
 
         with torch.no_grad():
             target_qa, _, _, _, _ = self.target_net(priv_s, player_ids, legal_move, greedy_a, hid)
@@ -1007,16 +810,6 @@ class R2D2Agent(torch.jit.ScriptModule):
         mask = torch.arange(0, max_seq_len, device=seq_len.device)
         mask = (mask.unsqueeze(1) < seq_len.unsqueeze(0)).float()
         err = (target.detach() - online_qa) * mask
-        
-        # if intent_weight > 0 and self.intent_size > 0:
-        #     err += seq_intent_loss * intent_weight
-
-        if self.train_adapt:
-            err = -online_qa # While this is not always greedy action, 
-                             # I am hoping this works similar to actor-critic training
-                             # where the intent_net is actor and frozen q-net is critic
-            # err += 25. # Wanted to get err positive
-            err /= 25. # Wanted to get err to similar magnitude as regular RL loss
 
         return err, lstm_o, (intent_loss, seq_intent_loss)
 
@@ -1058,15 +851,7 @@ class R2D2Agent(torch.jit.ScriptModule):
         all_player_intents = player_intents.view(seq_size, bsize, num_player, \
                                                  -1)
         all_player_intents = all_player_intents[..., :self.online_net.intent_size]
-        # own_intent_mask = 1 - torch.diag(torch.ones((num_player)))
         own_intent_mask = [i for j in range(num_player) for i in range(num_player) if i != j]
-        # own_intent_mask = torch.zeros((num_player*(num_player-1)))
-        # k = 0
-        # for j in range(num_player):
-        #     for i in range(num_player):
-        #         if i != j:
-        #             own_intent_mask[k] = i
-        #             k += 1
 
         squared_loss, avg_squared_loss, _, seq_squared_loss = self.online_net.pred_loss_intent(
             lstm_o, all_player_intents, own_intent_mask, seq_len
@@ -1092,7 +877,6 @@ class R2D2Agent(torch.jit.ScriptModule):
             batch.bootstrap,
             batch.seq_len,
             stat,
-            # intent_weight=self.intent_weight, # keep this intent constant
             intent_weight=intent_weight,
             pred_weight=pred_weight
         )
@@ -1100,25 +884,9 @@ class R2D2Agent(torch.jit.ScriptModule):
             err, torch.zeros_like(err), reduction="none"
         )
         rl_loss = rl_loss.sum(0)
-        stat["adapt_loss" if self.train_adapt else "rl_loss"].feed((rl_loss / batch.seq_len).mean().item())
+        stat["rl_loss"].feed((rl_loss / batch.seq_len).mean().item())
 
         priority = err.abs()
-        # priority = self.aggregate_priority(p, batch.seq_len)
-        # print("IDs")
-        # print(batch.obs[self.player_ids_str].shape)
-        # print(batch.obs[self.player_ids_str][:,0,:])
-        # print(batch.obs[self.player_ids_str][:,20,:])
-        # print(batch.obs[self.player_ids_str][:,-1,:])
-        
-        # print("INTENTS")
-        # print(batch.obs["player_intents"].shape)
-        # print(batch.obs["player_intents"][:,0,:])
-        # print(batch.obs["player_intents"][:,10,:])
-        # print(batch.obs["player_intents"][:,20,:])
-        # print(batch.obs["player_intents"][:,40,:])
-        # print(batch.obs["player_intents"][:,-1,:])
-        
-        # quit()
 
         if pred_weight > 0:
             if self.vdn:
@@ -1140,32 +908,8 @@ class R2D2Agent(torch.jit.ScriptModule):
         else:
             loss = rl_loss
 
-        if intent_weight > 0 and self.intent_size > 0 and not self.train_adapt:
-            # intent_loss, seq_intent_loss = self.aux_task_intent(
-            #         lstm_o,
-            #         batch.obs["player_intents"],
-            #         None,
-            #         batch.seq_len,
-            #         rl_loss.size(),
-            #         stat,
-            #         use_xent_intent=self.use_xent_intent,
-            #     )
-            
-            # if torch.any(torch.isnan(lstm_o)):
-            #     print ("lstm_o is nan")
-            #     # for dictname, dictthing in [('obs',batch.obs),('h0',batch.h0),('action',batch.action),('reward',batch.reward),('terminal',batch.terminal),('bootstrap',batch.bootstrap),('seq_len',batch.seq_len)]:
-            #     #     if type(dictthing) is dict:
-            #     #         for key in dictthing.keys():
-            #     #             if torch.any(torch.isnan(dictthing[key])):
-            #     #                 print(dictname, key, dictthing[key])
-            #     #     else:
-            #     #         if torch.any(torch.isnan(dictthing)):
-            #     #             print(dictname, dictthing)
-            #     print("rl_loss", rl_loss)
-            #     print("intent_loss", intent_loss)
-            # loss = loss + intent_weight * intent_loss#.detach()
-            # priority += intent_weight * seq_intent_loss.abs()
-            loss += intent_weight * intent_loss#.detach()
+        if intent_weight > 0 and self.intent_size > 0:
+            loss += intent_weight * intent_loss
             priority += intent_weight * seq_intent_loss.abs()
 
         return loss, priority

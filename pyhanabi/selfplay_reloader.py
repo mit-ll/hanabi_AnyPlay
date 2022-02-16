@@ -47,7 +47,6 @@ def parse_args():
     parser.add_argument("--use_xent_intent", action="store_true", default=False)
     parser.add_argument("--dont_onehot_xent_intent", action="store_true", default=False)
     parser.add_argument("--one_way_intent", action="store_true", default=False)
-    parser.add_argument("--train_adapt", action="store_true", default=False)
     parser.add_argument("--use_player_id", action="store_true", default=False, \
                         help="whether to provide player ID as observations to agents")
     parser.add_argument("--shuf_pid", action="store_true", default=False, \
@@ -95,7 +94,6 @@ def parse_args():
 
     args = parser.parse_args()
     assert args.method in ["vdn", "iql"]
-    assert not args.train_adapt or len(args.load_model) > 0
     return args
 
 
