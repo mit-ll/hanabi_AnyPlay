@@ -1,5 +1,5 @@
 # Copyright (c) 2022 Massachusetts Institute of Technology
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: CC-BY-NC-4.0
 
 import argparse
 import sys, time, os

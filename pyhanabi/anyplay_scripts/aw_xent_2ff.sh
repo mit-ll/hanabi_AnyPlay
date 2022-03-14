@@ -2,7 +2,7 @@
 
 
 # Copyright (c) 2022 Massachusetts Institute of Technology
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: CC-BY-NC-4.0
 
 python -u selfplay_reloader.py \
        --save_dir exps_awa16/awa-xe16_2ff \
