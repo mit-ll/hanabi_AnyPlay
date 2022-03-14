@@ -1,11 +1,8 @@
 #!/bin/bash
 
-# Copyright (c) Facebook, Inc. and its affiliates.
-# All rights reserved.
-#
-# This source code is licensed under the license found in the
-# LICENSE file in the root directory of this source tree.
-#
+
+# Copyright (c) 2022 Massachusetts Institute of Technology
+# SPDX-License-Identifier: MIT
 
 python -u selfplay_reloader.py \
        --save_dir exps_plot2/sad_2ffsk \
