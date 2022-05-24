@@ -1,10 +1,13 @@
+
 # Overview: Any-Play Learning Augmentation for Zero-Shot Coordination
+
+[![arXiv](https://img.shields.io/badge/arXiv-2201.12436-b31b1b.svg)](https://arxiv.org/abs/2201.12436)
 
 ![AnyPlay_diagram.png]()
 
 This library implements the [Any-Play learning augmentation](https://arxiv.org/abs/2201.12436) in [Hanabi Learning Environment](https://github.com/hengyuan-hu/hanabi-learning-environment). Any-Play is an intrisictly-motivated, diversity-based augmentation for reinforcement learning algorithms (RL) that enables RL agents to effectively cooperate with novel, never-before-seen teammates on collaborative tasks; referred to as zero-shot coordination. This library is used to train and demonstrate such teaming in the cooperative card game Hanabi; although the Any-Play augmentation is environment agnostic, and therefore, could be applied to many other domains beyone Hanabi.
 
-This library is a direct extension of the [`hanabi_SAD` library](https://github.com/facebookresearch/hanabi_SAD) and is modified and redistributed under the same [CC BY-NC license](https://creativecommons.org/licenses/by-nc/4.0/)
+This library, "hanabi_AnyPlay", is a derivative of the [`hanabi_SAD` library](https://github.com/facebookresearch/hanabi_SAD) by FACEBOOK, used under the [CC BY-NC license](https://creativecommons.org/licenses/by-nc/4.0/) license. "hanabi_AnyPlay" is licensed under the same [CC BY-NC license](https://creativecommons.org/licenses/by-nc/4.0/) by MIT.
 
 # Citation
 
@@ -232,22 +235,20 @@ clang-format -i *.h
 clang-format -i *.cc
 ```
 
-## Copyright
-Copyright (c) Facebook, Inc. and its affiliates.
-All rights reserved.
-
-This source code is licensed under the license found in the
-LICENSE file in the root directory of this source tree.
-
-
 # Disclaimer
 
 DISTRIBUTION STATEMENT A. Approved for public release. Distribution is unlimited.
 
+## Copyright
+[`hanabi_SAD` library](https://github.com/facebookresearch/hanabi_SAD)
+Copyright (c) Facebook, Inc. and its affiliates.
+All rights reserved.
+
+MIT authored extensions in the "hanabi_AnyPlay" library
+© 2022 Massachusetts Institute of Technology
+    Subject to FAR 52.227-11 – Patent Rights – Ownership by the Contractor (May 2014)
+    SPDX-License-Identifier: CC-BY-NC-4.0
+
 This material is based upon work supported by the Under Secretary of Defense for Research and Engineering under Air Force Contract No. FA8702-15-D-0001. Any opinions, findings, conclusions or recommendations expressed in this material are those of the author(s) and do not necessarily reflect the views of the Under Secretary of Defense for Research and Engineering.
 
-© 2022 Massachusetts Institute of Technology.
-
-Subject to FAR52.227-11 Patent Rights - Ownership by the contractor (May 2014)
-
-Delivered to the U.S. Government with Unlimited Rights, as defined in DFARS Part 252.227-7013 or 7014 (Feb 2014). Notwithstanding any copyright notice, U.S. Government rights in this work are defined by DFARS 252.227-7013 or DFARS 252.227-7014 as detailed above. Use of this work other than as specifically authorized by the U.S. Government may violate any copyrights that exist in this work.
+The software/firmware is provided to you on an As-Is basis
