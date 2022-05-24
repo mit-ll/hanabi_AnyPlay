@@ -3,7 +3,7 @@
 
 [![arXiv](https://img.shields.io/badge/arXiv-2201.12436-b31b1b.svg)](https://arxiv.org/abs/2201.12436)
 
-![AnyPlay_diagram.png]()
+![AnyPlay_diagram.png](AnyPlay_diagram.png)
 
 This library implements the [Any-Play learning augmentation](https://arxiv.org/abs/2201.12436) in [Hanabi Learning Environment](https://github.com/hengyuan-hu/hanabi-learning-environment). Any-Play is an intrisictly-motivated, diversity-based augmentation for reinforcement learning algorithms (RL) that enables RL agents to effectively cooperate with novel, never-before-seen teammates on collaborative tasks; referred to as zero-shot coordination. This library is used to train and demonstrate such teaming in the cooperative card game Hanabi; although the Any-Play augmentation is environment agnostic, and therefore, could be applied to many other domains beyone Hanabi.
 
