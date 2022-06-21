@@ -15,10 +15,11 @@ When using this library please cite the [Any-Play](https://arxiv.org/abs/2201.12
 
 Any-Play
 ```
-@article{lucas2022any,
+@inproceedings{lucas2022any,
   title={Any-Play: An Intrinsic Augmentation for Zero-Shot Coordination},
   author={Lucas, Keane and Allen, Ross E},
-  journal={arXiv preprint arXiv:2201.12436},
+  booktitle={Proceedings of the 21st International Conference on Autonomous Agents and Multiagent Systems},
+  pages={853--861},
   year={2022}
 }
 ```
